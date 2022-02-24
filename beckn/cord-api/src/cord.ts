@@ -170,35 +170,43 @@ export async function getBlockDetails(
        return;
     }
     if (blockHash.length < 16) {
-	blockHash = await api.rpc.chain.getBlockHash(blockHash);
+        try {
+	    blockHash = await api.rpc.chain.getBlockHash(blockHash);
+	} catch(err) {
+	    console.log("getBlockHash: ", err);
+	}
 	if (!blockHash) {
 	    res.status(404).json({ error: "Failed to get blockHash from number"});
 	    return;
 	}
     }
-    const signedBlock = await api.rpc.chain.getBlock(blockHash);
-    if (!signedBlock) {
-       res.status(404).json({ error: "block Hash not found"});
-       return;
+    try {
+	const signedBlock = await api.rpc.chain.getBlock(blockHash);
+	if (!signedBlock) {
+	    res.status(404).json({ error: "block Hash not found"});
+	    return;
+	}
+
+	let extrinsics: any = [];
+	signedBlock.block.extrinsics.forEach((ex: any, index: number) => {
+	    const { method: { args, method, section } } = ex;
+	    extrinsics.push({
+		index,
+		section,
+		method,
+		args: args.map((a) => a.toString())
+	    })
+	});
+
+	const events = await api.query.system.events.at(signedBlock.block.header.hash);
+	res.status(200).json({
+	    extrinsics,
+	    events,
+	});
+    } catch (err) {
+	console.log(err);
+	res.status(400).json({success: false, error: `failed to get block details: ${err}`});
     }
-
-    let extrinsics: any = [];
-    signedBlock.block.extrinsics.forEach((ex: any, index: number) => {
-	const { method: { args, method, section } } = ex;
-
-	extrinsics.push({
-	   index,
-	   section,
-	   method,
-	   args: args.map((a) => a.toString())
-	})
-    });
-
-    const events = await api.query.system.events.at(signedBlock.block.header.hash);
-    res.status(200).json({
-	extrinsics,
-	events,
-    });
     return;
 }
 
@@ -619,7 +627,7 @@ export async function orderConfirm(
 	console.log("error to place order", err, blockHash);
     }
     if (!signedBlock) {
-	return {error: 'block Hash not valid'}
+	return res.status(400).json({error: 'block Hash not valid'});
     }
 
     let storeId: string = '';
@@ -629,7 +637,7 @@ export async function orderConfirm(
 	const { method: { args, method, section } } = ex;
 
 	if (method !== 'list' && section !== 'product') {
-	   return;
+	    return;
 	}
 
 	listingId = args[0].toString();
