@@ -173,7 +173,7 @@ export async function getBlockDetails(
     if (blockHash.length < 16) {
         try {
 	    blockHash = await api.rpc.chain.getBlockHash(blockHash);
-	} catch(err) {
+	} catch(err: any) {
 	    console.log("getBlockHash: ", err);
 	}
 	if (!blockHash) {
@@ -204,7 +204,7 @@ export async function getBlockDetails(
 	    extrinsics,
 	    events,
 	});
-    } catch (err) {
+    } catch (err: any) {
 	console.log(err);
 	res.status(400).json({success: false, error: `failed to get block details: ${err}`});
     }
@@ -234,7 +234,7 @@ export async function itemCreate(
     let price: number = 0;
     try {
 	price = parseInt(data.selling_price ? data.selling_price : '0', 10);
-    } catch(err) {
+    } catch(err: any) {
 	console.log("Error: ", err);
     }
     if (!price) {
@@ -346,14 +346,14 @@ export async function itemDelegate(
     let qty: number = 1;
     try {
 	qty = parseInt(data.quantity ? data.quantity : '1', 10);
-    } catch (err) {
+    } catch (err: any) {
 	console.log("Quanity: ", err);
     }
     
     let price: number = 0;
     try {
 	price = parseInt(data.selling_price ? data.selling_price : '0', 10);
-    } catch(err) {
+    } catch(err: any) {
 	console.log("Error: ", err);
     }
     if (!price) {
@@ -488,14 +488,14 @@ export async function itemAdd(
     let qty: number = 1;
     try {
 	qty = parseInt(data.quantity ? data.quantity : '1', 10);
-    } catch (err) {
+    } catch (err: any) {
 	console.log("Quanity: ", err);
     }
     
     let price: number = 0;
     try {
 	price = parseInt(data.selling_price ? data.selling_price : '0', 10);
-    } catch(err) {
+    } catch(err: any) {
 	console.log("Error: ", err);
     }
     if (!price) {
@@ -623,6 +623,7 @@ export async function orderConfirm(
 ) {
 
     let data = req.body;
+   console.log("test 1");
 
     let userId = data.identifier;
     if (!userId || userId === '') {
@@ -635,17 +636,20 @@ export async function orderConfirm(
       	 userId = `//${userId}`;
     }
 
+   console.log("test 2");
     let qty: number = 1;
     try {
 	qty = parseInt(data.quantity ? data.quantity : '1', 10);
-    } catch (err) {
+    } catch (err: any) {
 	console.log("Quanity: ", err);
     }
-    
+
+   console.log("test 3");
+
     let price: number = 0;
     try {
 	price = parseInt(data.order_price ? data.order_price : '0', 10);
-    } catch(err) {
+    } catch(err: any) {
 	console.log("Error: ", err);
     }
     if (!price) {
@@ -654,6 +658,7 @@ export async function orderConfirm(
         });
         return;
     }
+   console.log("test 4");
 
     let blockHash = data.blockHash;
     if (!blockHash || blockHash === '') {
@@ -662,6 +667,8 @@ export async function orderConfirm(
         });
         return;
     }
+   console.log("test 5");
+    
     let listId = data.listId;
     if (!listId || listId === '') {
 	res.status(400).json({
@@ -669,64 +676,62 @@ export async function orderConfirm(
         });
         return;
     }
+   console.log("test 6");
 
     let id = await createIdentities(userId);
+   console.log("test 7");
 
     let signedBlock: any = undefined;
     try {
 	signedBlock = await api.rpc.chain.getBlock(blockHash);
-    } catch(err) {
+    } catch(err: any) {
 	console.log("error to place order", err, blockHash);
     }
+   console.log("test 8");
     if (!signedBlock) {
 	return res.status(400).json({error: 'block Hash not valid'});
     }
+   console.log("test 9");
 
+    let found: boolean = false;
     let storeId: string = '';
     let listingId: string = '';
     let product: any = {};
     signedBlock.block.extrinsics.forEach(async (ex: any, index: number) => {
 	const { method: { args, method, section } } = ex;
+   console.log("test 10", method, section);
 
 	if (method !== 'list' && section !== 'product') {
 	    return;
 	}
 
 	listingId = args[0]?.toString();
-
-	/* there can be more than 1 product.list events */
 	if (listingId === listId) {
-            /* This is matching now */
-	    storeId = args[3]?.toString();
-	    let item_price = args[4]?.toString();
-	    let product = cord.Product.fromProductAnchor(
-		listId,
-		args[2]?.toString(), /* contentHash */
-		args[5]?.toString(), /* cid */
-		args[1]?.toString(), /* creator */
-		storeId,
-		productSchema.id?.replace('cord:schema:',''),
-		parseInt(item_price, 10),
-		args[7]?.toString(), /* link */
-		0,
-	    )
+	  found = true;
 	}
     });
 
+    if (!found) {
+    res.status(400).json({error: "listId not matching in the block"});
+    return;
+    }
+   console.log("test 11");
     // Step 4: Create an Order from the lists
     let orderStream = cord.Content.fromSchemaAndContent(
 	productSchema,
 	{name: "Hello"},
 	id.user!.address
     )
+   console.log("test 12");
     let newOrderContent = cord.ContentStream.fromStreamContent(
 	orderStream,
 	id.user!,
 	{
-	    link: listingId,
+	    link: listId,
 	    nonceSalt: UUID.generate(),
 	}
     )
+   console.log("test 13");
 
     let bytes = json.encode(newOrderContent)
     let encoded_hash = await hasher.digest(bytes)
@@ -734,14 +739,15 @@ export async function orderConfirm(
 
     let newOrder = cord.Product.fromProductContentAnchor(
 	newOrderContent,
-	orderCid?.toString(),
-	storeId,
+	orderCid.toString(),
+	'0x493e9734154ce9cf9b5f67973ed7324961a6f18ca8d65b614a0a0ea58f76974c', //storeId,
 	price,
 	undefined, /* rating */
 	qty,
     )
 
     let orderCreationExtrinsic = await newOrder.order()
+   console.log("test 14", newOrder);
 
     let blkhash: any = '';
     try {
@@ -752,6 +758,7 @@ export async function orderConfirm(
 		resolveOn: cord.ChainUtils.IS_IN_BLOCK,
 	    }
 	)
+   console.log("test 15");
 	
 	blkhash = `${block.status.asInBlock}`;
 	res.json({success: true, block: blkhash});
@@ -760,6 +767,7 @@ export async function orderConfirm(
 	console.log(e.errorCode, '-', e.message)
 	res.status(400).json({success: false, block: ''});
     }
+   console.log("test 16");
 
     return;
 }
