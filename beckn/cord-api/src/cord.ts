@@ -113,11 +113,12 @@ let schemas: any[] = [];
 let productSchema: any = null;
 let gproducts: any = {};
 let delegations: any = {};
+let additions: any = {};
 
 export async function initializeCord() {
-    await cord.init({ address: 'wss://beckndemo.cord.network' })
+    await cord.init({ address: 'wss://staging.cord.network' })
 
-    provider = new WsProvider('wss://beckndemo.cord.network');
+    provider = new WsProvider('wss://staging.cord.network');
     api = await ApiPromise.create({ provider});
 
     networkAuthor = cord.Identity.buildFromURI('//Alice', {
@@ -143,7 +144,7 @@ export async function initializeCord() {
     const schemaCid = CID.create(1, 0xb220, encoded_hash)
 
     let pSchemaExtrinsic = await productSchema.store(
-	schemaCid.toString()
+	schemaCid?.toString()
     )
 
     try {
@@ -194,7 +195,7 @@ export async function getBlockDetails(
 		index,
 		section,
 		method,
-		args: args.map((a) => a.toString())
+		args: args.map((a) => a?.toString())
 	    })
 	});
 
@@ -279,7 +280,6 @@ export async function itemCreate(
 	seller: id.user!.address,
     }
     const storeId = Crypto.hashObjectAsStr(storeVal)
-    
 
     let bytes = json.encode(newProductContent)
     let encoded_hash = await hasher.digest(bytes)
@@ -287,7 +287,7 @@ export async function itemCreate(
 
     let newProduct = cord.Product.fromProductContentAnchor(
 	newProductContent,
-	streamCid.toString(),
+	streamCid?.toString(),
 	storeId, /*storeid */
 	price, /* price */
 	undefined, /* rating */
@@ -305,6 +305,8 @@ export async function itemCreate(
 	    }
 	)
 	res.status(200).json({blockHash: `${block.status.asInBlock}`, id: newProduct.id, success: true});
+
+	gproducts[newProduct.id] = { quantity: qty }
     } catch (e: any) {
 	console.log(e.errorCode, '-', e.message)
 	res.status(400).json({error: e.message});
@@ -388,6 +390,22 @@ export async function itemDelegate(
 
     let delegate = await createIdentities(delegateId);
 
+    let availableQuantity = 0;
+    if (gproducts[itemCreateId])
+	availableQuantity = gproducts[itemCreateId].quantity;
+    
+    let validQty: number = 0;
+    if (delegations[itemCreateId] && delegations[itemCreateId][delegate.user!.address]) {
+	validQty = delegations[itemCreateId][delegate.user!.address].quantity;
+    }
+
+    console.log("Delegate: ", availableQuantity, validQty, qty);
+    /* TODO: move this check to chain itself */
+    if (availableQuantity && (availableQuantity < (validQty + qty))) {
+	res.status(400).json({error: "Delegating more than existing quantity"});
+	return;
+    }
+
     let productStream = cord.Content.fromSchemaAndContent(
 	productSchema,
 	product,
@@ -399,7 +417,8 @@ export async function itemDelegate(
 	delegate.user!,
 	{
 	    link: itemCreateId,
-	    nonceSalt: `${product.name}:${product.sku}:delegate`
+	    //nonceSalt: `${product.name}:${product.sku}:delegate`
+	    nonceSalt: UUID.generate(),
 	}
     )
 
@@ -416,7 +435,7 @@ export async function itemDelegate(
 
     let newDelegate = cord.Product.fromProductContentAnchor(
 	newProductContent,
-	streamCid.toString(),
+	streamCid?.toString(),
 	storeId, /*storeid */
 	price, /* price */
 	undefined, /* rating */
@@ -433,11 +452,18 @@ export async function itemDelegate(
 	    }
 	)
 	res.status(200).json({blockHash: `${block.status.asInBlock}`, id: newDelegate.id, success: true});
+	if (!delegations[itemCreateId]) {
+	    delegations[itemCreateId] = { quantity: qty }
+	} else {
+	    delegations[itemCreateId] = { quantity: delegations[itemCreateId].quantity + qty}
+	}
+	delegations[itemCreateId][delegate.user!.address] = { quantity: validQty + qty }
     } catch (e: any) {
 	console.log(e.errorCode, '-', e.message)
 	res.status(400).json({error: e.message});
     }    
 
+    
     return;
 }
 
@@ -504,7 +530,7 @@ export async function itemAdd(
     }
     */
     let id = await createIdentities(userId);
-
+    
     let productStream = cord.Content.fromSchemaAndContent(
 	productSchema,
 	product,
@@ -519,12 +545,31 @@ export async function itemAdd(
 	}
     )
 
+    let availableQuantity = 0;
+    let createId = newProductContent.id.replace('cord:stream:', '');
+    if (delegations[createId] && delegations[createId][id.user!.address]) {
+	availableQuantity = delegations[createId][id.user!.address].quantity;
+    }
+    
+    let validQty: number = 0;
+    if (additions[createId] && additions[createId][id.user!.address]) {
+	validQty = additions[createId][id.user!.address].quantity;
+    }
+    
+    console.log("List: ", availableQuantity, validQty, qty);
+    /* TODO: move this check to chain itself */
+    if (availableQuantity && availableQuantity < (validQty + qty)) {
+	res.status(400).json({error: "Listing more than delegated quantity"});
+	return;
+    }
+
     let newListContent = cord.ContentStream.fromStreamContent(
 	productStream,
 	id.user!,
 	{
-	    link: newProductContent.id.replace('cord:stream:', ''),
-	    nonceSalt: `${product.name}:${product.sku}:list`
+	    link: createId,
+	    //nonceSalt: `${product.name}:${product.sku}:list`
+	    nonceSalt: UUID.generate(),
 	}
     )
     
@@ -535,13 +580,13 @@ export async function itemAdd(
     const storeId = Crypto.hashObjectAsStr(storeVal)
     
 
-    let bytes = json.encode(newProductContent)
+    let bytes = json.encode(newListContent)
     let encoded_hash = await hasher.digest(bytes)
     const streamCid = CID.create(1, 0xb220, encoded_hash)
 
     let newListing = cord.Product.fromProductContentAnchor(
 	newListContent,
-	streamCid.toString(),
+	streamCid?.toString(),
 	storeId, /*storeid */
 	price, /* price */
 	undefined, /* rating */
@@ -558,6 +603,13 @@ export async function itemAdd(
 	    }
 	)
 	res.status(200).json({blockHash: `${block.status.asInBlock}`, id: newListing.id, success: true});
+	if (!additions[createId]) {
+	    additions[createId] = { quantity: qty }
+	} else {
+	    additions[createId] = { quantity: additions[createId].quantity + qty}
+	}
+	additions[createId][id.user!.address] = { quantity: validQty + qty }
+	
     } catch (e: any) {
 	console.log(e.errorCode, '-', e.message)
 	res.status(400).json({error: e.message});
@@ -640,22 +692,22 @@ export async function orderConfirm(
 	    return;
 	}
 
-	listingId = args[0].toString();
+	listingId = args[0]?.toString();
 
 	/* there can be more than 1 product.list events */
 	if (listingId === listId) {
             /* This is matching now */
-	    storeId = args[3].toString();
-	    let item_price = args[4].toString();
+	    storeId = args[3]?.toString();
+	    let item_price = args[4]?.toString();
 	    let product = cord.Product.fromProductAnchor(
 		listId,
-		args[2].toString(), /* contentHash */
-		args[5].toString(), /* cid */
-		args[1].toString(), /* creator */
+		args[2]?.toString(), /* contentHash */
+		args[5]?.toString(), /* cid */
+		args[1]?.toString(), /* creator */
 		storeId,
 		productSchema.id?.replace('cord:schema:',''),
 		parseInt(item_price, 10),
-		args[7].toString(), /* link */
+		args[7]?.toString(), /* link */
 		0,
 	    )
 	}
@@ -682,7 +734,7 @@ export async function orderConfirm(
 
     let newOrder = cord.Product.fromProductContentAnchor(
 	newOrderContent,
-	orderCid.toString(),
+	orderCid?.toString(),
 	storeId,
 	price,
 	undefined, /* rating */
