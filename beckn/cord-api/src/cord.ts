@@ -153,7 +153,7 @@ export async function initializeCord() {
 	    productOwner!,
 	    {
 		resolveOn: cord.ChainUtils.IS_IN_BLOCK,
-	    }
+	    },
 	)
 	console.log('✅ Schema added: ${productSchema.id}')
     } catch (e: any) {
@@ -296,7 +296,17 @@ export async function itemCreate(
 
     let productCreationExtrinsic = await newProduct.create()
 
+    let blockHash = '';
     try {
+	setTimeout(() => {
+	    if (blockHash !== '') return;	    
+	    res.status(500).json({
+		success: false,
+		error: "Failed to establish connection to chain",
+		blockHash: '',
+		id: ''});
+	    return;
+	}, 10000); 
 	let block = await cord.ChainUtils.signAndSubmitTx(
 	    productCreationExtrinsic,
 	    id.productOwner!,
@@ -304,11 +314,46 @@ export async function itemCreate(
 		resolveOn: cord.ChainUtils.IS_IN_BLOCK,
 	    }
 	)
-	res.status(200).json({blockHash: `${block.status.asInBlock}`, id: newProduct.id, success: true});
+	if (blockHash !== '') return;
+	blockHash = `${block.status.asInBlock}`;
+	res.status(200).json({blockHash, id: newProduct.id, success: true});
 
 	gproducts[newProduct.id] = { quantity: qty }
     } catch (e: any) {
-	console.log(e.errorCode, '-', e.message)
+	console.log(e.errorCode, '-', e.message);
+	/* Retry */
+	try {
+	    newProductContent = cord.ContentStream.fromStreamContent(
+		productStream,
+		id.user!,
+	    )
+	    newProduct = cord.Product.fromProductContentAnchor(
+		newProductContent,
+		streamCid?.toString(),
+		storeId, /*storeid */
+		price, /* price */
+		undefined, /* rating */
+		qty,
+	    )
+	    
+	    productCreationExtrinsic = await newProduct.create()
+	    let block = await cord.ChainUtils.signAndSubmitTx(
+		productCreationExtrinsic,
+		id.productOwner!,
+		{
+		    resolveOn: cord.ChainUtils.IS_IN_BLOCK,
+		}
+	    )
+	    if (blockHash !== '') return;
+	    blockHash = `${block.status.asInBlock}`;
+	    res.status(200).json({blockHash, id: newProduct.id, success: true});
+	    
+	    gproducts[newProduct.id] = { quantity: qty }
+	    return;
+	} catch (err: any) {
+	    console.log("failure again");
+	}
+	blockHash = 'error';
 	res.status(400).json({error: e.message});
     }
 
@@ -443,7 +488,17 @@ export async function itemDelegate(
     )
 
     let productCreationExtrinsic = await newDelegate.delegate();
+    let blockHash = '';
     try {
+	setTimeout(() => {
+	    if (blockHash !== '') return;	    
+	    res.status(500).json({
+		success: false,
+		error: "Failed to establish connection to chain",
+		blockHash: '',
+		id: ''});
+	    return;
+	}, 10000);
 	let block = await cord.ChainUtils.signAndSubmitTx(
 	    productCreationExtrinsic,
 	    id.productOwner!,
@@ -451,7 +506,9 @@ export async function itemDelegate(
 		resolveOn: cord.ChainUtils.IS_IN_BLOCK,
 	    }
 	)
-	res.status(200).json({blockHash: `${block.status.asInBlock}`, id: newDelegate.id, success: true});
+	if (blockHash !== '') return;
+	blockHash = `${block.status.asInBlock}`	
+	res.status(200).json({blockHash, id: newDelegate.id, success: true});
 	if (!delegations[itemCreateId]) {
 	    delegations[itemCreateId] = { quantity: qty }
 	} else {
@@ -460,6 +517,7 @@ export async function itemDelegate(
 	delegations[itemCreateId][delegate.user!.address] = { quantity: validQty + qty }
     } catch (e: any) {
 	console.log(e.errorCode, '-', e.message)
+	blockHash = 'error';	
 	res.status(400).json({error: e.message});
     }    
 
@@ -594,7 +652,17 @@ export async function itemAdd(
     )
 
     let productCreationExtrinsic = await newListing.list();
+    let blockHash = '';
     try {
+	setTimeout(() => {
+	    if (blockHash !== '') return;	    
+	    res.status(500).json({
+		success: false,
+		error: "Failed to establish connection to chain",
+		blockHash: '',
+		id: ''});
+	    return;
+	}, 10000);
 	let block = await cord.ChainUtils.signAndSubmitTx(
 	    productCreationExtrinsic,
 	    id.productOwner!,
@@ -602,7 +670,9 @@ export async function itemAdd(
 		resolveOn: cord.ChainUtils.IS_IN_BLOCK,
 	    }
 	)
-	res.status(200).json({blockHash: `${block.status.asInBlock}`, id: newListing.id, success: true});
+	if (blockHash !== '') return;
+	blockHash = `${block.status.asInBlock}`;
+	res.status(200).json({blockHash, id: newListing.id, success: true});
 	if (!additions[createId]) {
 	    additions[createId] = { quantity: qty }
 	} else {
@@ -612,6 +682,7 @@ export async function itemAdd(
 	
     } catch (e: any) {
 	console.log(e.errorCode, '-', e.message)
+	blockHash = 'error';
 	res.status(400).json({error: e.message});
     }
     return;
@@ -623,7 +694,6 @@ export async function orderConfirm(
 ) {
 
     let data = req.body;
-   console.log("test 1");
 
     let userId = data.identifier;
     if (!userId || userId === '') {
@@ -636,7 +706,6 @@ export async function orderConfirm(
       	 userId = `//${userId}`;
     }
 
-   console.log("test 2");
     let qty: number = 1;
     try {
 	qty = parseInt(data.quantity ? data.quantity : '1', 10);
@@ -644,7 +713,6 @@ export async function orderConfirm(
 	console.log("Quanity: ", err);
     }
 
-   console.log("test 3");
 
     let price: number = 0;
     try {
@@ -658,7 +726,6 @@ export async function orderConfirm(
         });
         return;
     }
-   console.log("test 4");
 
     let blockHash = data.blockHash;
     if (!blockHash || blockHash === '') {
@@ -667,7 +734,6 @@ export async function orderConfirm(
         });
         return;
     }
-   console.log("test 5");
     
     let listId = data.listId;
     if (!listId || listId === '') {
@@ -676,10 +742,8 @@ export async function orderConfirm(
         });
         return;
     }
-   console.log("test 6");
 
     let id = await createIdentities(userId);
-   console.log("test 7");
 
     let signedBlock: any = undefined;
     try {
@@ -687,11 +751,9 @@ export async function orderConfirm(
     } catch(err: any) {
 	console.log("error to place order", err, blockHash);
     }
-   console.log("test 8");
     if (!signedBlock) {
 	return res.status(400).json({error: 'block Hash not valid'});
     }
-   console.log("test 9");
 
     let found: boolean = false;
     let storeId: string = '';
@@ -699,7 +761,6 @@ export async function orderConfirm(
     let product: any = {};
     signedBlock.block.extrinsics.forEach(async (ex: any, index: number) => {
 	const { method: { args, method, section } } = ex;
-   console.log("test 10", method, section);
 
 	if (method !== 'list' && section !== 'product') {
 	    return;
@@ -715,14 +776,12 @@ export async function orderConfirm(
     res.status(400).json({error: "listId not matching in the block"});
     return;
     }
-   console.log("test 11");
     // Step 4: Create an Order from the lists
     let orderStream = cord.Content.fromSchemaAndContent(
 	productSchema,
 	{name: "Hello"},
 	id.user!.address
     )
-   console.log("test 12");
     let newOrderContent = cord.ContentStream.fromStreamContent(
 	orderStream,
 	id.user!,
@@ -731,7 +790,6 @@ export async function orderConfirm(
 	    nonceSalt: UUID.generate(),
 	}
     )
-   console.log("test 13");
 
     let bytes = json.encode(newOrderContent)
     let encoded_hash = await hasher.digest(bytes)
@@ -747,10 +805,18 @@ export async function orderConfirm(
     )
 
     let orderCreationExtrinsic = await newOrder.order()
-   console.log("test 14", newOrder);
 
     let blkhash: any = '';
     try {
+	setTimeout(() => {
+	    if (blkhash !== '') return;	    
+	    res.status(500).json({
+		success: false,
+		error: "Failed to establish connection to chain",
+		blockHash: '',
+		id: ''});
+	    return;
+	}, 8000);
 	let block =  await cord.ChainUtils.signAndSubmitTx(
 	    orderCreationExtrinsic,
 	    id.networkAuthor!,
@@ -758,16 +824,14 @@ export async function orderConfirm(
 		resolveOn: cord.ChainUtils.IS_IN_BLOCK,
 	    }
 	)
-   console.log("test 15");
-	
+	if (blkhash !== '') return;
 	blkhash = `${block.status.asInBlock}`;
 	res.json({success: true, block: blkhash});
 	return;
     } catch (e: any) {
 	console.log(e.errorCode, '-', e.message)
+	blkhash = 'error';
 	res.status(400).json({success: false, block: ''});
     }
-   console.log("test 16");
-
     return;
 }
