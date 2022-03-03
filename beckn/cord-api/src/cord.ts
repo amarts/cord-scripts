@@ -5,7 +5,6 @@ import * as json from 'multiformats/codecs/json'
 import { blake2b256 as hasher } from '@multiformats/blake2/blake2b'
 import { CID } from 'multiformats/cid'
 import type { KeyringPair } from '@polkadot/keyring/types'
-const { ApiPromise, WsProvider } = require('@polkadot/api');
 
 const AUTH_SEED =
   '0x0000000000000000000000000000000000000000000000000000000000000000'
@@ -104,7 +103,7 @@ export async function createIdentities(my_id: string) {
 }
 
 let provider: any = null;
-let api: any = null;
+let papi: any = null;
 let seller_ids: any[] = ['//seller//1'];
 let prodSchemaContent = require('../res/ondc-prod-schema.json')
 let networkAuthor: any = undefined;
@@ -118,8 +117,8 @@ let additions: any = {};
 export async function initializeCord() {
     await cord.init({ address: 'wss://staging.cord.network' })
 
-    provider = new WsProvider('wss://staging.cord.network');
-    api = await ApiPromise.create({ provider});
+    const { api } = await cord.ChainHelpers.ChainApiConnection.getConnectionOrConnect()
+    papi = api;
 
     networkAuthor = cord.Identity.buildFromURI('//Alice', {
 	signingKeyPairType: 'sr25519',
@@ -172,7 +171,7 @@ export async function getBlockDetails(
     }
     if (blockHash.length < 16) {
         try {
-	    blockHash = await api.rpc.chain.getBlockHash(blockHash);
+	    blockHash = await papi.rpc.chain.getBlockHash(blockHash);
 	} catch(err: any) {
 	    console.log("getBlockHash: ", err);
 	}
@@ -182,7 +181,7 @@ export async function getBlockDetails(
 	}
     }
     try {
-	const signedBlock = await api.rpc.chain.getBlock(blockHash);
+	const signedBlock = await papi.rpc.chain.getBlock(blockHash);
 	if (!signedBlock) {
 	    res.status(404).json({ error: "block Hash not found"});
 	    return;
@@ -199,7 +198,7 @@ export async function getBlockDetails(
 	    })
 	});
 
-	const events = await api.query.system.events.at(signedBlock.block.header.hash);
+	const events = await papi.query.system.events.at(signedBlock.block.header.hash);
 	res.status(200).json({
 	    extrinsics,
 	    events,
@@ -747,7 +746,7 @@ export async function orderConfirm(
 
     let signedBlock: any = undefined;
     try {
-	signedBlock = await api.rpc.chain.getBlock(blockHash);
+	signedBlock = await papi.rpc.chain.getBlock(blockHash);
     } catch(err: any) {
 	console.log("error to place order", err, blockHash);
     }
