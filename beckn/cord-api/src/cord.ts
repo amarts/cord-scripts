@@ -299,6 +299,7 @@ export async function itemCreate(
     try {
 	setTimeout(() => {
 	    if (blockHash !== '') return;	    
+	    blockHash = "timeout";
 	    res.status(500).json({
 		success: false,
 		error: "Failed to establish connection to chain",
@@ -491,6 +492,7 @@ export async function itemDelegate(
     try {
 	setTimeout(() => {
 	    if (blockHash !== '') return;	    
+	    blockHash = "timeout";
 	    res.status(500).json({
 		success: false,
 		error: "Failed to establish connection to chain",
@@ -655,6 +657,7 @@ export async function itemAdd(
     try {
 	setTimeout(() => {
 	    if (blockHash !== '') return;	    
+	    blockHash = "timeout";
 	    res.status(500).json({
 		success: false,
 		error: "Failed to establish connection to chain",
@@ -808,7 +811,8 @@ export async function orderConfirm(
     let blkhash: any = '';
     try {
 	setTimeout(() => {
-	    if (blkhash !== '') return;	    
+	    if (blkhash !== '') return;
+	    blkhash = "timeout";
 	    res.status(500).json({
 		success: false,
 		error: "Failed to establish connection to chain",
